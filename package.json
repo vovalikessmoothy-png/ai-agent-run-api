@@ -1,0 +1,18 @@
+{
+  "name": "trained-assist-runner-jobs",
+  "private": true,
+  "type": "module",
+  "description": "Оркестрация GHA-джоб для ai-agent-runner: submit → stream events → result/artifacts (без продуктового кода)",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "npm run check:yaml && npm run check:syntax && npm run dry-run",
+    "check:yaml": "ruby -ryaml -e 'Dir.glob(\".github/workflows/*.{yml,yaml}\").sort.each { |f| YAML.load_file(f); puts \"yaml ok: #{f}\" }'",
+    "check:syntax": "for f in scripts/*.mjs scripts/e2e-loop/*.mjs scripts/e2e-loop/engine-scripts/*.mjs; do [ -e \"$f\" ] || continue; node --check \"$f\" || exit 1; echo \"node --check ok: $f\"; done",
+    "dry-run": "node scripts/stress-probe.mjs --dry-run && node scripts/e2e-loop.mjs --dry-run",
+    "stress-probe": "node scripts/stress-probe.mjs",
+    "e2e-loop": "node scripts/e2e-loop.mjs"
+  }
+}
