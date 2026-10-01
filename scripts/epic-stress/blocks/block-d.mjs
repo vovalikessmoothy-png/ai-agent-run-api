@@ -14,6 +14,23 @@ function taskFor(id) {
   return `epic-${id} ${new Date().toISOString()}: контракт location, доменной логики нет.`;
 }
 
+/**
+ * D1/D4 проверяют РУТИНГ location (receiver подтверждён, резервации нет).
+ * Полный submit в Serverless API — это уже A1 (requires api-remote): если в репе пула
+ * не заданы RUNNER_API_URL/KEY, receiver честно пишет «принято» и выходит 0.
+ * Падать на отсутствии API нельзя — иначе тест меряет конфиг, а не контракт.
+ */
+function receiverPipelineChecks(logText, parsed) {
+  const fallback = /RUNNER_API настроен не будет/.test(logText);
+  return [
+    {
+      name: 'receiver-run-or-honest-fallback',
+      ok: Boolean(parsed.runId) || fallback,
+      detail: parsed.runId ? `runId=${parsed.runId}` : fallback ? 'fallback: RUNNER_API в репе пула не настроен — принято без run' : 'ни runId, ни fallback-сообщения',
+    },
+  ];
+}
+
 export default {
   id: 'D',
   title: 'контракт location',
@@ -38,7 +55,7 @@ export default {
         if (receiver?.databaseId) {
           const logText = await receiverLog(receiver.databaseId).catch(() => '');
           parsed = parseReceiverLog(logText);
-          checks.push(check('receiver-submitted', Boolean(parsed.runId), `runId=${parsed.runId}`));
+          checks.push(...receiverPipelineChecks(logText, parsed));
           checks.push(check('not-reserved', !parsed.locationReserved, 'location="" не должен резервироваться'));
         }
         return {
@@ -133,7 +150,7 @@ export default {
         if (receiver?.databaseId) {
           const logText = await receiverLog(receiver.databaseId).catch(() => '');
           parsed = parseReceiverLog(logText);
-          checks.push(check('receiver-submitted', Boolean(parsed.runId), `runId=${parsed.runId}`));
+          checks.push(...receiverPipelineChecks(logText, parsed));
           checks.push(check('not-reserved', !parsed.locationReserved, 'без поля location не должно быть резервации'));
         }
         return {
