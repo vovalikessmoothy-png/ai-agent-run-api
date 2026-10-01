@@ -1,4 +1,4 @@
-# trained-assist-runner-jobs
+# ai-agent-run-api
 
 **Этот репозиторий = только оркестрация джоб: submit → stream events → result/artifacts.**
 Продуктовый код (API, runner, storage) живёт в [trained-assist/ai-agent-runner](https://github.com/trained-assist/ai-agent-runner) и **не копируется сюда**: джобы чекаутят продукт отдельным шагом в `product/` и работают через его публичный контракт. Решение владельца от 01.10.2026: код джоб в ai-agent-runner «не к месту и сбивает» — выносим сюда.
