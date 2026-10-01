@@ -1,0 +1,30 @@
+name: CI
+
+# Минимальная валидация этой репы (без чекаута продукта):
+# YAML всех workflow, node --check драйверов, --dry-run драйверов.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: npm ci (без зависимостей — валидация lockfile)
+        run: npm ci --no-audit --no-fund
+
+      - name: Валидация YAML всех workflow (ruby -ryaml)
+        run: npm run check:yaml
+
+      - name: Синтаксис драйверов (node --check)
+        run: npm run check:syntax
+
+      - name: Dry-run драйверов (режим/пути/план без запуска)
+        run: npm run dry-run

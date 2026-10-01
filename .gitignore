@@ -1,0 +1,15 @@
+node_modules/
+product/
+.e2e-dist/
+.e2e-dist.lock
+e2e-loop-report*.json
+stress-report*.json
+stress-timeout.txt
+opencode-stress.json
+oc.tsv
+opencode.json
+*.log
+.env
+.env.*
+.DS_Store
+tmp/
