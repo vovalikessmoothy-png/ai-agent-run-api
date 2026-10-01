@@ -4,9 +4,10 @@
 // B3 — обрыв mid-run: connection_lost ≠ failed + восстановление по durable store.
 // B4 — fake-nonzero | fake-timeout | fake-crash → структурированный outcome, задача не теряется.
 import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { collectAllEvents, getResult, getStatus, submitRun, waitTerminal } from '../../e2e-loop/client.mjs';
 import { control, startServer } from '../local.mjs';
-import { timingsFromEvents } from '../metrics.mjs';
 
 function specFor(engine, prompt, timeoutMs) {
   return {
@@ -45,6 +46,38 @@ function opencodeOnce(prompt, timeoutMs) {
 }
 
 const RATE_LIMIT_RE = /429|rate.?limit|too many requests|quota|FreeTier|throttl/i;
+
+/**
+ * Конфиг opencode для БЕСПЛАТНОГО пути: провайдер `ladder` + модель `free-ladder`.
+ * Платные вызовы запрещены — никакой другой модели не подставляем.
+ * `opencode.json` лежит в корне этой репы и в .gitignore; при отсутствии создаётся,
+ * чужой файл с другим провайдером не перезаписывается (тогда кейс падает с объяснением).
+ */
+function ensureOpencodeConfig(dir) {
+  const path = join(dir, 'opencode.json');
+  const expected = {
+    $schema: 'https://opencode.ai/config.json',
+    provider: {
+      ladder: {
+        name: 'llm-ladder',
+        options: { baseURL: 'https://llm-ladder.trainedassist.store/v1', apiKey: '{env:LLM_LADDER_TOKEN}' },
+        models: { 'free-ladder': { name: 'free-ladder' } },
+      },
+    },
+  };
+  if (!existsSync(path)) {
+    writeFileSync(path, `${JSON.stringify(expected, null, 2)}\n`);
+    return { path, created: true };
+  }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return { path, created: false, error: `${path} не является валидным JSON` };
+  }
+  if (parsed?.provider?.ladder?.models?.['free-ladder']) return { path, created: false };
+  return { path, created: false, error: `${path} есть, но в нём нет provider.ladder.models["free-ladder"] — БЕСПЛАТНЫЙ путь не гарантирован` };
+}
 
 export default {
   id: 'B',
@@ -85,22 +118,26 @@ export default {
       requires: ['opencode'],
       timeoutMs: 600_000,
       async run(ctx) {
+        const config = ensureOpencodeConfig(process.cwd());
+        const checks = [check('free-ladder-config', !config.error, config.error ?? `${config.path}${config.created ? ' (создан)' : ''}`)];
+        if (config.error) return { checks, metrics: { config: config.path } };
+
         const burst = Number(process.env.EPIC_B2_BURST ?? 7);
         const prompt = 'Reply with exactly one word: pong';
         const results = await Promise.all(Array.from({ length: burst }, () => opencodeOnce(prompt, 180_000)));
         const rateLimited = results.filter((r) => RATE_LIMIT_RE.test(r.out ?? ''));
         const ok = results.filter((r) => r.code === 0).length;
-        const checks = [
-          check('burst-completed', results.length === burst, `${results.length}/${burst}`),
-          check('at-least-half-succeeded', ok >= Math.ceil(burst / 2), `ok=${ok}/${burst}`),
-          check('no-paid-model-used', !/deepseek-v4|gpt-5|claude-|opus/i.test(results.map((r) => r.out).join('\n')), 'модели вне free-ladder не вызывались'),
-        ];
+        checks.push(check('burst-completed', results.length === burst, `${results.length}/${burst}`));
+        checks.push(check('at-least-half-succeeded', ok >= Math.ceil(burst / 2), `ok=${ok}/${burst}`));
+        checks.push(check('no-paid-model-used', !/deepseek-v4|gpt-5|claude-|opus/i.test(results.map((r) => r.out).join('\n')), 'модели вне free-ladder не вызывались'));
         const summary = results.map((r, i) => ({ i: i + 1, exit: r.code, ms: r.ms, rateLimit: RATE_LIMIT_RE.test(r.out ?? '') }));
+        const answered = results.filter((r) => /pong/i.test(r.out ?? '')).length;
+        checks.push(check('model-actually-answered', answered > 0, `выход с pong: ${answered}/${burst}; первый выход: ${(results[0].out ?? '').slice(-160)}`));
         return {
           checks,
-          metrics: { burst, ok, rateLimited: rateLimited.length, runs: summary.map((s) => s.ms) },
+          metrics: { burst, ok, answered, rateLimited: rateLimited.length, runs: summary.map((s) => s.ms) },
           runMetrics: { submitted: burst, succeeded: ok, failed: burst - ok, rateLimitEvents: rateLimited.length },
-          note: `B2: burst=${burst}, ok=${ok}, rate-limit сигналов=${rateLimited.length}; порог фиксируется по первой серии с 429`,
+          note: `B2: burst=${burst}, ok=${ok}, ответов=${answered}, rate-limit сигналов=${rateLimited.length}; порог фиксируется по первой серии с 429`,
         };
       },
     },

@@ -66,6 +66,12 @@ flowchart LR
 | `e2e-loop/engine-scripts/` | локальные engine-скрипты (probe/artifact/cred/slow) |
 | `e2e-loop/tsconfig.build.json` | фоллбэк сборки продуктового `src/`; приоритет — tsconfig **самого продукта** (`$AGENT_RUNNER_DIR/scripts/e2e-loop/tsconfig.build.json`) |
 | `driver-mode-and-product-paths.mjs` | выбор режима (env > LOCAL) и путей к продукту/сборке |
+| `epic-stress.mjs` | драйвер эпика location/стресс (issue #1): `--dry-run` / `--block A..F` / `--case D3` / `--merge` / `--summary`, отчёт `epic-stress-report.json` |
+| `epic-stress/report.mjs` | схема отчёта + сводные метрики (пересчёт идемпотентен при `--merge`) |
+| `epic-stress/pool.mjs` | `POST /pool/trigger` (лестница) + наблюдение за receiver-джобами в `ai-agent-runs-pool` |
+| `epic-stress/blocks/block-{a..f}.mjs` | кейсы A1–F2 со списком зависимостей: нет зависимости → **SKIP с причиной** |
+| `epic-stress/metrics.mjs` | тайминги по событиям, sha256, скан на секреты, разбор лога receiver |
+| `epic-stress/engine-scripts/repo-push.mjs` | движок C4: коммит + push с имитацией обрыва первого push |
 
 Подробности цикла приёмки: [docs/E2E-acceptance-loop.md](docs/E2E-acceptance-loop.md).
 
@@ -79,6 +85,9 @@ npm ci                 # зависимости этой репы (драйве�
 node scripts/stress-probe.mjs --dry-run                 # быстрый self-check: режим/пути/план
 node scripts/stress-probe.mjs --phase timeline          # LOCAL: эфемерный сервер, замер timeline
 node scripts/e2e-loop.mjs --sudo-policy report          # цикл приёмки целиком (LOCAL)
+node scripts/epic-stress.mjs --dry-run                  # эпик: режим/возможности/план кейсов A–F
+node scripts/epic-stress.mjs --block B                  # эпик: один блок (A–F) или --case D3
+node scripts/epic-stress.mjs --summary                  # markdown-сводка отчёта (для issue)
 npm run check                                           # YAML + node --check + dry-run (то же, что CI)
 ```
 
@@ -95,6 +104,7 @@ RUNNER_API_URL=<адрес из variables репы> RUNNER_API_KEY=<ключ и�
 |---|---|---|
 | `stress-probe.yml` | `workflow_dispatch` (input `mode: local\|remote`) | замеры лимитов CI: timeline, recovery, CPU burn, opencode через llm-ladder под нагрузкой, сигнатура таймаута, память до OOM (последним шагом); отчёты без секретов → artifact |
 | `capability-probe.yml` | `pull_request`, `workflow_dispatch` | что можно гонять в CI: system facts, typecheck+unit продукта, Playwright, opencode headless и через llm-ladder, e2e-цикл, документированный запрет reboot |
+| `epic-stress.yml` | `workflow_dispatch` (input `block: all\|A..F`, `case`, `mode`, `opencode`) | прогоны эпика issue #1 на linux (здесь гоняются B3/C4/F2, которые на macOS SKIP); отчёт → artifact, сводка → step summary |
 | `ci.yml` | `push`, `pull_request` | минимальная валидация этой репы: `ruby -ryaml` по всем workflow, `node --check` драйверов, `--dry-run` |
 
 Во всех джобах: отдельный чекаут продукта (`actions/checkout` с `repository: trained-assist/ai-agent-runner`, `path: product`), `npm ci` в `product/`, драйверы запускаются отсюда с `AGENT_RUNNER_DIR=product`.
@@ -106,6 +116,7 @@ RUNNER_API_URL=<адрес из variables репы> RUNNER_API_KEY=<ключ и�
 | `LLM_LADDER_TOKEN` | **secrets этой репы** (уже установлен) | opencode через llm-ladder в stress-probe/capability-probe |
 | `RUNNER_API_URL` | **variables этой репы** (Settings → Actions → Variables) | адрес Serverless API, REMOTE-режим |
 | `RUNNER_API_KEY` | **secrets этой репы** | Bearer-ключ того же API |
+| `POOL_TRIGGER_TOKEN` | **secrets этой репы** (значение в GCP SM `POOL_TRIGGER_TOKEN`) | блок D и пул-кейсы A1/C1/F: `POST /pool/trigger` лестницы |
 
 Значения секретов/адреса в файлы и репозиторий не коммитируются — только имена переменных. Без `RUNNER_API_URL`/`RUNNER_API_KEY` джобы идут в LOCAL-режиме (дефолт).
 
