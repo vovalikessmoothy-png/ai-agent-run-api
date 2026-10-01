@@ -1,0 +1,109 @@
+name: epic-stress
+
+# Прогоны эпика location/стресс (issue #1) — те же кейсы, что `node scripts/epic-stress.mjs`.
+# Нужен linux: кейсы B3 (обрыв mid-run + durable recovery), C4 (обрыв при push), F2 (рестарт VM)
+# гоняются только на linux-раннере; локально на macOS они честно SKIP.
+# Только workflow_dispatch. Отчёт без секретов → artifact, markdown-сводка → step summary.
+# Секреты: LLM_LADDER_TOKEN (free-ladder), POOL_TRIGGER_TOKEN (блок D/A1/C1/F — если задан),
+# RUNNER_API_KEY + vars.RUNNER_API_URL (mode=remote). Значения в логи не пишутся.
+
+on:
+  workflow_dispatch:
+    inputs:
+      block:
+        description: "Блок кейсов"
+        type: choice
+        options:
+          - all
+          - A
+          - B
+          - C
+          - D
+          - E
+          - F
+        default: all
+      case:
+        description: "Один кейс (например D3); пусто = весь блок"
+        type: string
+        default: ""
+      mode:
+        description: "Режим драйвера: local (эфемерный сервер в джобе) или remote (наш Serverless API)"
+        type: choice
+        options:
+          - local
+          - remote
+        default: local
+      opencode:
+        description: "Установить opencode и гонять B2 (бесплатный free-ladder)"
+        type: boolean
+        default: true
+
+jobs:
+  epic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AGENT_RUNNER_DIR: product
+      RUNNER_API_URL: ${{ inputs.mode == 'remote' && vars.RUNNER_API_URL || '' }}
+      RUNNER_API_KEY: ${{ inputs.mode == 'remote' && secrets.RUNNER_API_KEY || '' }}
+      LLM_LADDER_TOKEN: ${{ secrets.LLM_LADDER_TOKEN }}
+      POOL_TRIGGER_TOKEN: ${{ secrets.POOL_TRIGGER_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      EPIC_B2_BURST: "7"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Чекаут продукта (ai-agent-runner → product/)
+        uses: actions/checkout@v4
+        with:
+          repository: trained-assist/ai-agent-runner
+          path: product
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: "npm ci (продукт: typescript для сборки src/)"
+        working-directory: product
+        run: npm ci --include=dev --no-audit --no-fund
+
+      - name: npm ci (джобы этой репы)
+        run: npm ci --no-audit --no-fund
+
+      - name: Dry-run (режим / возможности / план)
+        run: node scripts/epic-stress.mjs --dry-run
+
+      - name: Opencode (только free-ladder)
+        if: inputs.opencode
+        run: npm install -g opencode-ai >/dev/null 2>&1 && opencode --version
+
+      - name: Прогон
+        env:
+          EPIC_BLOCK: ${{ inputs.block }}
+          EPIC_CASE: ${{ inputs.case }}
+        run: |
+          set -o pipefail
+          if [ -n "$EPIC_CASE" ]; then
+            node scripts/epic-stress.mjs --case "$EPIC_CASE" --json epic-stress-report.json
+          elif [ "$EPIC_BLOCK" = "all" ]; then
+            node scripts/epic-stress.mjs --json epic-stress-report.json
+          else
+            node scripts/epic-stress.mjs --block "$EPIC_BLOCK" --json epic-stress-report.json
+          fi
+
+      - name: Сводка в step summary
+        if: always()
+        run: |
+          if [ -f epic-stress-report.json ]; then
+            node scripts/epic-stress.mjs --summary | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "отчёт не создан" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Отчёт (без секретов) → artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic-stress-report
+          path: epic-stress-report.json
+          if-no-files-found: error

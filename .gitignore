@@ -13,3 +13,4 @@ opencode.json
 .env.*
 .DS_Store
 tmp/
+epic-stress-report*.json
