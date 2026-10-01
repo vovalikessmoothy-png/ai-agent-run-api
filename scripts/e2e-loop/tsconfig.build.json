@@ -1,0 +1,9 @@
+{
+  "extends": "../../product/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "../../product/src",
+    "outDir": "../../.e2e-dist"
+  },
+  "include": ["../../product/src/**/*"]
+}
