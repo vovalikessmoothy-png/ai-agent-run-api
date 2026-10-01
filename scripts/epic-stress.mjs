@@ -28,11 +28,15 @@ function argValue(flag, fallback = null) {
 }
 
 function selectCases() {
-  const blockFilter = argValue('--block');
+  // --block принимает список через запятую (например "A,B,C"), --case — один кейс
+  const blockFilter = String(argValue('--block') ?? '')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
   const caseFilter = argValue('--case');
   const selected = [];
   for (const block of BLOCKS) {
-    if (blockFilter && block.id !== blockFilter.toUpperCase()) continue;
+    if (blockFilter.length > 0 && !blockFilter.includes(block.id)) continue;
     for (const kase of block.cases) {
       if (caseFilter && kase.id !== caseFilter.toUpperCase()) continue;
       selected.push({ block, kase });

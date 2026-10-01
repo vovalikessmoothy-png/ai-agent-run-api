@@ -11,16 +11,8 @@ on:
   workflow_dispatch:
     inputs:
       block:
-        description: "Блок кейсов"
-        type: choice
-        options:
-          - all
-          - A
-          - B
-          - C
-          - D
-          - E
-          - F
+        description: "Блоки кейсов через запятую (A,B,C …) или all"
+        type: string
         default: all
       case:
         description: "Один кейс (например D3); пусто = весь блок"
