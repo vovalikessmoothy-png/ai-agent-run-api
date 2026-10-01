@@ -62,8 +62,14 @@ const adapters = {
   probe: new ScriptEngine('probe', 'engine-scripts/probe.mjs'),
   artifact: new ScriptEngine('artifact', 'engine-scripts/artifact.mjs'),
   cred: new ScriptEngine('cred', 'engine-scripts/cred.mjs'),
+  // эпик issue #1, блок C4: коммит + push в репо с имитацией обрыва первого push
+  'repo-push': new ScriptEngine('repo-push', join('..', 'epic-stress', 'engine-scripts', 'repo-push.mjs')),
 };
 if (process.env.E2E_WITH_OPENCODE === '1') adapters.opencode = new OpenCodeAdapter();
+
+// Период heartbeat'а нужен кейсу B3 (обрыв mid-run → connection_lost ≠ failed).
+// По умолчанию 0 — поведение e2e-цикла не меняется.
+const heartbeatIntervalMs = Number(process.env.E2E_HEARTBEAT_MS ?? '0');
 
 const startsByEngine = {};
 for (const [name, adapter] of Object.entries(adapters)) {
@@ -94,6 +100,7 @@ const service = new AgentApi({
   host: { region: 'sandbox-eu', environment: 'sandbox' },
   faults,
   cancelGraceMs: 500,
+  ...(Number.isFinite(heartbeatIntervalMs) && heartbeatIntervalMs > 0 ? { heartbeatIntervalMs } : {}),
   logger: logToStdout,
 });
 await service.recover();
