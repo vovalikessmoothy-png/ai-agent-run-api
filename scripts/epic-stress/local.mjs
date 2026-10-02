@@ -75,6 +75,8 @@ export async function startServer(options = {}) {
       E2E_CONTROL_TOKEN: controlToken,
       E2E_KEYS_PATH: keysPath,
       E2E_WITH_OPENCODE: options.withOpenCode ? '1' : '0',
+      // heartbeat нужен кейсу B3 (обрыв mid-run → connection_lost); по умолчанию 0
+      ...(Number.isFinite(options.heartbeatMs) && options.heartbeatMs > 0 ? { E2E_HEARTBEAT_MS: String(options.heartbeatMs) } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

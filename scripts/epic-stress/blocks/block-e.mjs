@@ -103,12 +103,11 @@ export default {
     {
       id: 'E2',
       title: 'персональное репо юзера: коммит на задачу, git log читается, секретов нет',
-      requires: ['api-local', 'repo'],
+      requires: ['api-local', 'repo', 'user-repo'],
       timeoutMs: 300_000,
       async run(ctx) {
         const fullName = String(process.env.EPIC_USER_REPO ?? '').trim();
-        const checks = [check('user-repo-configured', fullName.includes('/'), 'задайте EPIC_USER_REPO=org/name')];
-        if (!fullName.includes('/')) return { checks, metrics: {} };
+        const checks = [];
 
         const api = await ctx.apiTarget();
         const marker = `epic-E2-${Date.now()}`;

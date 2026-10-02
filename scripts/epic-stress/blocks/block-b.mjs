@@ -149,8 +149,11 @@ export default {
       async run(ctx) {
         const checks = [];
 
-        // ── B3a: heartbeat-обрыв → событие connection_lost, состояние НЕ failed
-        const server = await ctx.ensureServer();
+        // ── B3a: heartbeat-обрыв → событие connection_lost, состояние НЕ failed.
+        // Изолированный сервер (свой rootDir + heartbeat-interval): B3 убивает и рестартует
+        // свой процесс — общий ctx-сервер и его durable store трогать нельзя, иначе ломается B4.
+        const server = await startServer({ heartbeatMs: 300 });
+        if (server.error) throw new Error(server.error);
         const api = { base: server.base, key: server.key };
         const ctl = control(server);
         await ctl.injectFault('heartbeat', { kind: 'connection_lost' });
@@ -181,7 +184,7 @@ export default {
         const tKill = Date.now();
         await server.kill();
         const tKilled = Date.now();
-        const restarted = await startServer({ dist: server.dist, rootDir: server.rootDir });
+        const restarted = await startServer({ dist: server.dist, rootDir: server.rootDir, heartbeatMs: 300 });
         const tUp = Date.now();
         checks.push(check('server-restarted', !restarted.error, restarted.error ?? `port ${restarted.port}`));
 
@@ -201,10 +204,12 @@ export default {
         checks.push(check('state-not-failed-after-death', status?.state !== 'failed', `state=${status?.state}`));
         checks.push(check('connection-lost-flag-after-death', status?.connectionLost === true, `connectionLost=${status?.connectionLost}`));
 
-        // уборка: гасим висящий ран и сервер
+        // уборка: гасим висящий ран и свой изолированный сервер (rootDir свой — удаляется)
         const { postCancel } = await import('../../e2e-loop/client.mjs');
-        await postCancel(restarted.base, restarted.key, hang.json.runId, {}).catch(() => {});
-        await restarted.stop();
+        if (!restarted.error) {
+          await postCancel(restarted.base, restarted.key, hang.json.runId, {}).catch(() => {});
+          await restarted.stop();
+        }
 
         const recoveryMs = tStatus ? tStatus - tKill : null;
         return {

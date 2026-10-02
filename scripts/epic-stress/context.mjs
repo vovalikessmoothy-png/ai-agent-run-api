@@ -90,6 +90,10 @@ export function capabilities(env = process.env) {
         ok: vmReboot && process.platform === 'linux',
         reason: vmReboot ? `platform=${process.platform}` : 'рестарт VM выключен — включается EPIC_VM_REBOOT=1 (нужен root на песочной VM)',
       },
+      'user-repo': {
+        ok: Boolean(String(env.EPIC_USER_REPO ?? '').trim().includes('/')),
+        reason: String(env.EPIC_USER_REPO ?? '').trim().includes('/') ? 'ok' : 'задайте EPIC_USER_REPO=owner/name (персональное репо юзера в орге profiles-artifacts)',
+      },
       linux: { ok: process.platform === 'linux', reason: process.platform === 'linux' ? 'ok' : `platform=${process.platform}` },
     },
   };
